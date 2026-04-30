@@ -1,23 +1,24 @@
-// include/chaincpp/security/sandbox.hpp
 #pragma once
 
 #include <chrono>
 #include <functional>
 #include <string>
 #include <system_error>
+#include <memory>
+#include <cstddef>
 
 namespace chaincpp::security {
 
-// Forward declaration
-class Sandbox;
+// ============================================================================
+// Result Type - Safe error handling without exceptions
+// ============================================================================
 
-// Result type for error handling (no exceptions for security)
 template<typename T>
 class Result {
 public:
     static Result<T> ok(T value) {
         Result r;
-        r.value_ = std::move(value);
+        r.value_ = std::make_unique<T>(std::move(value));
         r.has_value_ = true;
         return r;
     }
@@ -29,18 +30,42 @@ public:
         return r;
     }
     
+    Result(Result&& other) noexcept
+        : value_(std::move(other.value_))
+        , error_(std::move(other.error_))
+        , has_value_(other.has_value_) {}
+    
+    Result& operator=(Result&& other) noexcept {
+        if (this != &other) {
+            value_ = std::move(other.value_);
+            error_ = std::move(other.error_);
+            has_value_ = other.has_value_;
+        }
+        return *this;
+    }
+    
+    // No copy
+    Result(const Result&) = delete;
+    Result& operator=(const Result&) = delete;
+    
     bool is_ok() const { return has_value_; }
     bool is_err() const { return !has_value_; }
     
     T& value() { 
         if (!has_value_) throw std::runtime_error(error_);
-        return value_; 
+        return *value_;
+    }
+    
+    const T& value() const { 
+        if (!has_value_) throw std::runtime_error(error_);
+        return *value_;
     }
     
     std::string error() const { return error_; }
     
 private:
-    T value_;
+    Result() = default;
+    std::unique_ptr<T> value_;
     std::string error_;
     bool has_value_ = false;
 };
@@ -71,39 +96,59 @@ private:
     bool has_value_ = false;
 };
 
-// Security limits for sandboxed execution
+// ============================================================================
+// Security Limits
+// ============================================================================
+
 struct SecurityLimits {
-    std::chrono::milliseconds timeout{5000};  // 5 seconds max
-    size_t max_memory_bytes{100 * 1024 * 1024};  // 100MB max
-    size_t max_output_bytes{1024 * 1024};  // 1MB output limit
+    std::chrono::milliseconds timeout{5000};
+    size_t max_memory_bytes{100 * 1024 * 1024};
+    size_t max_output_bytes{1024 * 1024};
     bool allow_network{false};
     bool allow_filesystem{false};
+    std::vector<std::string> allowed_domains;
+    std::vector<std::string> allowed_paths;
     
-    // Factory for safe defaults
     static SecurityLimits safe_defaults() {
-        return SecurityLimits{};
+        SecurityLimits limits;
+        limits.timeout = std::chrono::milliseconds(5000);
+        limits.max_memory_bytes = 100 * 1024 * 1024;
+        limits.max_output_bytes = 1024 * 1024;
+        limits.allow_network = false;
+        limits.allow_filesystem = false;
+        return limits;
     }
     
-    // Stricter for user code
     static SecurityLimits strict() {
-        auto limits = SecurityLimits{};
-        limits.timeout = std::chrono::seconds(1);
-        limits.max_memory_bytes = 10 * 1024 * 1024;  // 10MB
-        limits.max_output_bytes = 100 * 1024;  // 100KB
+        SecurityLimits limits;
+        limits.timeout = std::chrono::milliseconds(1000);
+        limits.max_memory_bytes = 10 * 1024 * 1024;
+        limits.max_output_bytes = 100 * 1024;
+        limits.allow_network = false;
+        limits.allow_filesystem = false;
+        return limits;
+    }
+    
+    static SecurityLimits network_access() {
+        auto limits = safe_defaults();
+        limits.allow_network = true;
         return limits;
     }
 };
 
-// Main sandbox class
+// ============================================================================
+// Sandbox Class
+// ============================================================================
+
 class Sandbox {
 public:
-    // Execute a function with security restrictions
+    ~Sandbox();
+    
     static Result<void> execute_safe(
         std::function<Result<void>()> func,
         const SecurityLimits& limits = SecurityLimits::safe_defaults()
     );
     
-    // For functions that return a value
     template<typename T>
     static Result<T> execute_safe_result(
         std::function<Result<T>()> func,
@@ -111,10 +156,26 @@ public:
     );
     
 private:
-    // Platform-specific implementation
+    Sandbox() = default;
+    
     static bool set_memory_limit(size_t max_bytes);
-    static bool set_timeout(std::chrono::milliseconds timeout);
+    static bool set_time_limit(std::chrono::milliseconds timeout);
     static void sanitize_environment();
+    static bool check_network_allowed(bool allowed);
 };
+
+} // namespace chaincpp::security
+
+// Template implementation must be in header
+namespace chaincpp::security {
+
+template<typename T>
+Result<T> Sandbox::execute_safe_result(
+    std::function<Result<T>()> func,
+    const SecurityLimits& limits
+) {
+    // This is a simple implementation - we'll enhance it
+    return func();
+}
 
 } // namespace chaincpp::security
