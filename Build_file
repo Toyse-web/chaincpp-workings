@@ -1,0 +1,17 @@
+# Create build directory
+mkdir build && cd build
+
+# Configure with CMake
+cmake ..
+
+# Build
+cmake --build .
+
+# Run tests
+ctest
+
+# Or run test executable directly
+./test_sandbox
+
+# Run example
+./basic_usage
