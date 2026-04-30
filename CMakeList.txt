@@ -1,0 +1,38 @@
+cmake_minimum_required(VERSION 3.20)
+project(chaincpp VERSION 0.1.0)
+
+# Security-critical flags
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Hardened compilation flags
+if(MSVC)
+    add_compile_options(/W4 /WX /guard:cf /DYNAMICBASE /NXCOMPAT)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic -Werror 
+                       -fstack-protector-strong 
+                       -D_FORTIFY_SOURCE=2)
+    add_link_options(-pie -Wl,-z,now,-z,relro)
+endif()
+
+# Enable testing
+enable_testing()
+
+# Main library
+add_library(chaincpp STATIC
+    src/security/sandbox.cpp
+)
+
+target_include_directories(chaincpp PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+)
+
+# Tests
+add_executable(test_sandbox tests/test_sandbox.cpp)
+target_link_libraries(test_sandbox chaincpp)
+add_test(NAME SandboxTests COMMAND test_sandbox)
+
+# Example
+add_executable(basic_usage examples/basic_usage.cpp)
+target_link_libraries(basic_usage chaincpp)
