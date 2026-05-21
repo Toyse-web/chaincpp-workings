@@ -23,6 +23,11 @@ endif()
 # Main library
 add_library(chaincpp STATIC
     src/security/sandbox.cpp
+    src/security/secrets.cpp
+    src/core/prompt.cpp
+    src/models/llm.cpp
+    src/agents/tool.cpp          # NEW
+    src/agents/react_agent.cpp   # NEW
 )
 
 target_include_directories(chaincpp PUBLIC
